@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Team Dark Void</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #000;
+      color: #f00;
+      font-family: 'Courier New', monospace;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      text-align: center;
+    }
+
+    h1.glitch {
+      font-size: 4em;
+      color: #fff;
+      position: relative;
+    }
+
+    h1.glitch::before, h1.glitch::after {
+      content: attr(data-text);
+      position: absolute;
+      left: 0;
+      width: 100%;
+      overflow: hidden;
+      color: #f00;
+      animation: glitch 1s infinite linear alternate-reverse;
+    }
+
+    h1.glitch::after {
+      color: #0ff;
+      animation-delay: .2s;
+    }
+
+    @keyframes glitch {
+      0% { clip-path: inset(0 0 95% 0); }
+      20% { clip-path: inset(5% 0 70% 0); }
+      40% { clip-path: inset(40% 0 20% 0); }
+      60% { clip-path: inset(60% 0 10% 0); }
+      80% { clip-path: inset(85% 0 5% 0); }
+      100% { clip-path: inset(0 0 95% 0); }
+    }
+
+    p {
+      font-size: 1.3em;
+      color: #ccc;
+      margin-top: 20px;
+      max-width: 600px;
+    }
+
+    .signature {
+      margin-top: 40px;
+      font-size: 1em;
+      color: #666;
+    }
+
+    /* Popup styling */
+    .popup {
+      position: fixed;
+      top: 40%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: #111;
+      color: #f00;
+      padding: 20px 40px;
+      font-size: 1.5em;
+      border: 2px solid #f00;
+      z-index: 9999;
+      box-shadow: 0 0 20px red;
+      font-family: monospace;
+      border-radius: 10px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <h1 class="glitch" data-text="DARK VOID">DARK VOID</h1>
+  <p>We came, we saw, we voided.<br>Your domain was just... too easy.</p>
+  <div class="signature">-- Team Dark Void // Your system never stood a chance --</div>
+
+  <script>
+    document.addEventListener('keydown', function(e) {
+        let prevented = false;
+
+        if (e.key === 'F12' || e.keyCode === 123) prevented = true;
+        if (((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key.toUpperCase() === 'I' || e.keyCode === 73)) ||
+            (e.metaKey && e.altKey && (e.key.toUpperCase() === 'I' || e.keyCode === 73))) prevented = true;
+        if (((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key.toUpperCase() === 'J' || e.keyCode === 74)) ||
+            (e.metaKey && e.altKey && (e.key.toUpperCase() === 'J' || e.keyCode === 74))) prevented = true;
+        if (((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key.toUpperCase() === 'C' || e.keyCode === 67)) ||
+            (e.metaKey && e.altKey && (e.key.toUpperCase() === 'C' || e.keyCode === 67))) prevented = true;
+        if ((e.ctrlKey || e.metaKey) && (e.key.toUpperCase() === 'U' || e.keyCode === 85)) prevented = true;
+
+        if (prevented) {
+            e.preventDefault();
+            showPopupWarning();
+        }
+    });
+
+    function showPopupWarning() {
+        const popup = document.createElement('div');
+        popup.className = 'popup';
+        popup.innerText = "Greetings from Dark Void\nYour security is an illusion";
+        document.body.appendChild(popup);
+        setTimeout(() => popup.remove(), 3500);
+    }
+  </script>
+
+</body>
+</html>
